@@ -10,9 +10,9 @@ YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
 
 tab1, tab2 = st.tabs(["📊 GEX Dashboard", "📈 GEX Profile"])
 
-# ====================== GEX DASHBOARD (your clean table view) ======================
+# ====================== PRO GEX DASHBOARD ======================
 with tab1:
-    st.title("🚀 GEX Heatmap Tool - Full Chain")
+    st.title("🚀 Professional GEX Heatmap")
 
     st.sidebar.header("Watchlist")
     watchlist = st.sidebar.multiselect("Tickers", ["SPX", "SPY", "QQQ", "IWM", "NDX"], default=["SPX", "SPY", "QQQ"])
@@ -131,70 +131,65 @@ with tab1:
             if king_neg is not None:
                 st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-# ====================== GEX PROFILE TAB (Alphatica style) ======================
+# ====================== PRO GEX PROFILE TAB (Alphatica-style) ======================
 with tab2:
-    st.title("📈 GEX Profile - Gamma Exposure Levels")
-    st.caption("SPX • Live from Flash Alpha")
+    st.title("📈 GEX Profile - Professional View")
+    st.caption("SPX • Live Gamma Exposure Levels")
 
     try:
         fa = flashalpha.FlashAlpha(api_key=YOUR_FLASHALPHA_KEY)
         data = fa.gex("SPX")
         spot = data.get("underlying_price")
+        gamma_flip = data.get("gamma_flip")
         df = pd.DataFrame(data.get("strikes", []))
         
         if not df.empty:
             df = df.sort_values("strike")
             df["net_gex"] = df["net_gex"].fillna(0)
 
-            # Top summary metrics
             total_gex = df["net_gex"].sum()
-            max_gex_strike = df.loc[df["net_gex"].idxmax()]["strike"]
-            max_gex_value = df["net_gex"].max()
+            regime = "Positive Gamma (Stabilizing)" if total_gex > 0 else "Negative Gamma (Momentum/Volatile)"
+            regime_color = "#00ff88" if total_gex > 0 else "#ff6666"
 
             st.markdown(f"""
-            <div style="background:#1a1a2e; padding:15px; border-radius:12px; text-align:center; margin-bottom:20px;">
-                <h2>SPX • Gamma Exposure Levels</h2>
-                <span style="font-size:1.8em; color:#00ff88;">CLOSE {spot:,.0f}</span> 
-                <span style="font-size:1.6em; color:#00ff88;">NET GEX +${total_gex/1_000_000_000:,.2f}B</span> 
-                <span style="font-size:1.4em;">Record single strike +${max_gex_value/1_000_000:,.0f}M @ {max_gex_strike:,.0f}</span>
+            <div style="background:#1a1a2e; padding:20px; border-radius:12px; text-align:center;">
+                <h2>SPX Gamma Exposure</h2>
+                <span style="font-size:2em; color:#00ff88;">{spot:,.0f}</span> 
+                <span style="font-size:1.8em; color:{regime_color}">{regime}</span><br>
+                <span style="font-size:1.4em;">Gamma Flip: <strong>{gamma_flip:,.0f}</strong></span>
             </div>
             """, unsafe_allow_html=True)
 
-            # Horizontal bar chart
+            # Pro-style horizontal GEX chart
             fig = go.Figure()
-
             fig.add_trace(go.Bar(
                 y=df["strike"],
                 x=df["net_gex"],
                 orientation='h',
                 marker_color=["#00ff88" if x > 0 else "#ff6666" for x in df["net_gex"]],
                 text=df["net_gex"].apply(lambda x: f"+${x/1_000_000:,.0f}M" if x > 0 else f"-${abs(x)/1_000_000:,.0f}M"),
-                textposition="outside",
-                hoverinfo="text"
+                textposition="outside"
             ))
 
-            # Spot line
-            fig.add_hline(y=spot, line_dash="dash", line_color="#ffd700", 
-                         annotation_text=f"SPOT = {spot:,.0f} ← MAX MAGNET", 
-                         annotation_position="top right", annotation_font_color="#ffd700")
+            # Gamma Flip line
+            if gamma_flip:
+                fig.add_hline(y=gamma_flip, line_dash="dash", line_color="#ffd700", 
+                             annotation_text=f"Gamma Flip → {gamma_flip:,.0f}", annotation_position="top right")
 
             fig.update_layout(
                 height=850,
-                title="SPX GEX Profile",
+                title="SPX GEX Profile (Pro View)",
                 xaxis_title="Net Gamma Exposure",
-                yaxis_title="Strike",
-                yaxis=dict(autorange="reversed", tickmode="array", tickvals=df["strike"][::5]),
+                yaxis_title="Strike Price",
+                yaxis=dict(autorange="reversed"),
                 plot_bgcolor="#0f172a",
                 paper_bgcolor="#0f172a",
-                font_color="white",
-                margin=dict(l=100, r=100, t=80, b=80)
+                font_color="white"
             )
 
             st.plotly_chart(fig, use_container_width=True)
 
-            st.info("The top metrics and spot line are live.")
-
     except Exception as e:
-        st.error(f"Could not load GEX Profile: {e}")
+        st.error(f"Profile load error: {e}")
 
-st.caption("✅ Clean GEX Dashboard + Improved GEX Profile tab (Alphatica-style)")
+st.caption("✅ Professional GEX Dashboard • Built for real traders")
