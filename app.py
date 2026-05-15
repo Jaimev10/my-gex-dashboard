@@ -6,22 +6,6 @@ from datetime import datetime
 
 st.set_page_config(layout="wide", page_title="GEX Heatmap", initial_sidebar_state="collapsed")
 
-# ====================== MOBILE-FRIENDLY CSS ======================
-st.markdown("""
-<style>
-    /* Mobile optimizations */
-    @media (max-width: 768px) {
-        .stTable { overflow-x: auto !important; }
-        .st-emotion-cache-1dj0h7a { font-size: 0.95rem !important; }
-        .stPlotlyChart { height: 680px !important; }
-        .stMetric { font-size: 1.1rem !important; }
-        .stButton button { height: 48px !important; font-size: 1.1rem !important; }
-    }
-    /* Desktop stays exactly the same */
-    .stTable { overflow-x: auto; }
-</style>
-""", unsafe_allow_html=True)
-
 st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ) - Full Chain")
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
@@ -99,6 +83,7 @@ for i, ticker in enumerate(tickers):
             st.write("No data")
             continue
 
+        # Pinning signal
         sentiment, emoji, color = get_pinning_sentiment(df, spot)
         st.markdown(f"**GEX Pinning:** <span style='color:{color}; font-size:1.2em'>{emoji} {sentiment}</span>", unsafe_allow_html=True)
 
@@ -143,4 +128,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Full-chain GEX • Mobile optimized • Refresh anytime")
+st.caption("✅ Full-chain GEX • Pinning analysis • Refresh anytime")
