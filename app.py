@@ -9,28 +9,29 @@ st.set_page_config(layout="wide", page_title="GEX Heatmap", initial_sidebar_stat
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
 
-# ====================== THEME ======================
+# Theme
 if "theme" not in st.session_state:
     st.session_state.theme = "dark"
 theme = st.sidebar.radio("Theme", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "dark" else 1)
 st.session_state.theme = theme.lower()
 
-# ====================== GLOBAL BIAS (Dynamic) ======================
-st.markdown(f"""
-<div style="text-align:center; padding:15px; border-radius:12px; background:#1a3c1a; color:#00ff88; font-size:1.5em; font-weight:bold; margin-bottom:15px;">
-    🌍 OVERALL MARKET BIAS: <span style="color:#00ff88;">🟢 STRONGLY BULLISH</span>
-</div>
-""", unsafe_allow_html=True)
-
-st.title("🚀 Your GEX Heatmap Tool - Full Chain")
+# ====================== DYNAMIC GLOBAL BIAS ======================
+def calculate_global_bias(data_dict):
+    total_gex = sum(df["net_gex"].sum() for df, _, _ in data_dict.values() if not df.empty)
+    if total_gex > 500_000_000:
+        return "🟢 STRONGLY BULLISH", "#00ff88"
+    elif total_gex > 100_000_000:
+        return "🟢 BULLISH", "#00cc66"
+    elif total_gex < -500_000_000:
+        return "🔴 STRONGLY BEARISH", "#ff4444"
+    elif total_gex < -100_000_000:
+        return "🔴 BEARISH", "#ff6666"
+    else:
+        return "⚪ NEUTRAL / CHOPPY", "#aaaaaa"
 
 # ====================== WATCHLIST ======================
 st.sidebar.header("Watchlist")
 watchlist = st.sidebar.multiselect("Select Tickers", ["SPX", "SPY", "QQQ", "IWM", "NDX"], default=["SPX", "SPY", "QQQ"])
-
-# ====================== QUICK ACTIONS ======================
-st.sidebar.header("Quick Actions")
-mobile_layout = st.sidebar.checkbox("Mobile-first vertical layout", value=False)
 
 # ====================== REALTIME REFRESH ======================
 if "last_update" not in st.session_state:
@@ -58,6 +59,8 @@ pos_only = st.sidebar.checkbox("Positive GEX only")
 neg_only = st.sidebar.checkbox("Negative GEX only")
 min_vol = st.sidebar.slider("Min Volume", 0, 10000, 100, step=100)
 min_oi = st.sidebar.slider("Min OI", 0, 50000, 500, step=500)
+
+mobile_layout = st.sidebar.checkbox("Mobile-first vertical layout", value=False)
 
 # ====================== HELPER FUNCTIONS ======================
 def get_color(val, df_max, df_min):
@@ -106,11 +109,14 @@ def fetch_gex(ticker):
         return pd.DataFrame(), None, None
 
 # ====================== MAIN DASHBOARD ======================
-cols = st.columns(len(watchlist))
+cols = st.columns(len(watchlist)) if not mobile_layout else [st.container() for _ in watchlist]
 
+data_dict = {}
 for i, ticker in enumerate(watchlist):
-    with cols[i]:
+    container = cols[i] if not mobile_layout else cols[i]
+    with container:
         df, spot, gamma_flip = fetch_gex(ticker)
+        data_dict[ticker] = (df, spot, gamma_flip)
         
         st.subheader(f"{ticker} — {datetime.now().strftime('%H:%M:%S')}")
         
@@ -125,8 +131,7 @@ for i, ticker in enumerate(watchlist):
         current_total = df["net_gex"].sum()
         prev_total = st.session_state.previous_gex.get(ticker, current_total)
         delta = current_total - prev_total
-        st.metric("**Total Net GEX**", f"${current_total/1_000_000:,.1f}M", 
-                  delta=f"{delta/1_000_000:+.1f}M")
+        st.metric("**Total Net GEX**", f"${current_total/1_000_000:,.1f}M", delta=f"{delta/1_000_000:+.1f}M")
         st.session_state.previous_gex[ticker] = current_total
 
         # Apply filters
@@ -147,12 +152,7 @@ for i, ticker in enumerate(watchlist):
             max_gex = filtered_df["net_gex"].max()
             min_gex = filtered_df["net_gex"].min()
             fig_dist = go.Figure()
-            fig_dist.add_trace(go.Bar(
-                x=filtered_df["strike"],
-                y=filtered_df["net_gex"],
-                marker_color=[get_color(v, max_gex, min_gex) for v in filtered_df["net_gex"]],
-                name="GEX"
-            ))
+            fig_dist.add_trace(go.Bar(x=filtered_df["strike"], y=filtered_df["net_gex"], marker_color=[get_color(v, max_gex, min_gex) for v in filtered_df["net_gex"]], name="Net GEX"))
             fig_dist.update_layout(height=160, margin=dict(l=0,r=0,t=0,b=0), title="GEX Distribution", showlegend=False)
             st.plotly_chart(fig_dist, use_container_width=True)
 
@@ -176,7 +176,6 @@ for i, ticker in enumerate(watchlist):
         fig.update_layout(height=780, margin=dict(l=0,r=0,t=10,b=0))
         st.plotly_chart(fig, use_container_width=True)
 
-        # Export
         if st.button(f"📥 Export {ticker} CSV", key=f"export_{i}"):
             csv = filtered_df.to_csv(index=False)
             st.download_button("Download CSV", csv, f"{ticker}_gex.csv", "text/csv", key=f"dl_{i}")
@@ -186,4 +185,4 @@ for i, ticker in enumerate(watchlist):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Phase 3 Complete • Dynamic Bias • GEX Charts • Save Views • Key Levels")
+st.caption("✅ Phase 4 Complete • Dynamic Bias • GEX Charts • Key Levels Highlighted")
