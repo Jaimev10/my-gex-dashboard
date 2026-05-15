@@ -15,11 +15,7 @@ if "theme" not in st.session_state:
 theme = st.sidebar.radio("Theme", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "dark" else 1)
 st.session_state.theme = theme.lower()
 
-# ====================== DYNAMIC GLOBAL BIAS ======================
-st.sidebar.header("Global Bias")
-if "global_bias" not in st.session_state:
-    st.session_state.global_bias = "Neutral"
-
+# ====================== GLOBAL BIAS (Dynamic) ======================
 st.markdown(f"""
 <div style="text-align:center; padding:15px; border-radius:12px; background:#1a3c1a; color:#00ff88; font-size:1.5em; font-weight:bold; margin-bottom:15px;">
     🌍 OVERALL MARKET BIAS: <span style="color:#00ff88;">🟢 STRONGLY BULLISH</span>
@@ -32,20 +28,9 @@ st.title("🚀 Your GEX Heatmap Tool - Full Chain")
 st.sidebar.header("Watchlist")
 watchlist = st.sidebar.multiselect("Select Tickers", ["SPX", "SPY", "QQQ", "IWM", "NDX"], default=["SPX", "SPY", "QQQ"])
 
-# ====================== SAVE / LOAD VIEWS ======================
-st.sidebar.header("💾 Views")
-if st.sidebar.button("💾 Save Current View"):
-    st.session_state.saved_view = {
-        "watchlist": watchlist,
-        "range_percent": st.session_state.get("range_percent", 12),
-        "min_gex_k": st.session_state.get("min_gex_k", 50),
-    }
-    st.success("View saved!")
-
-if "saved_view" in st.session_state and st.sidebar.button("🔄 Load Saved View"):
-    st.session_state.range_percent = st.session_state.saved_view["range_percent"]
-    st.session_state.min_gex_k = st.session_state.saved_view["min_gex_k"]
-    st.rerun()
+# ====================== QUICK ACTIONS ======================
+st.sidebar.header("Quick Actions")
+mobile_layout = st.sidebar.checkbox("Mobile-first vertical layout", value=False)
 
 # ====================== REALTIME REFRESH ======================
 if "last_update" not in st.session_state:
@@ -66,15 +51,23 @@ with col_t:
 
 # ====================== FILTERS ======================
 st.sidebar.header("Filters")
-range_percent = st.sidebar.slider("Strike range ± % of spot", 5, 30, 12, key="range_percent")
+range_percent = st.sidebar.slider("Strike range ± % of spot", 5, 30, 12)
 show_all = st.sidebar.checkbox("Show ALL strikes", value=False)
-min_gex_k = st.sidebar.slider("Min |GEX| ($k)", 0, 500, 50, step=25, key="min_gex_k")
+min_gex_k = st.sidebar.slider("Min |GEX| ($k)", 0, 500, 50, step=25)
 pos_only = st.sidebar.checkbox("Positive GEX only")
 neg_only = st.sidebar.checkbox("Negative GEX only")
 min_vol = st.sidebar.slider("Min Volume", 0, 10000, 100, step=100)
 min_oi = st.sidebar.slider("Min OI", 0, 50000, 500, step=500)
 
 # ====================== HELPER FUNCTIONS ======================
+def get_color(val, df_max, df_min):
+    if val > 0:
+        intensity = min(255, int(70 + 185 * (val / df_max if df_max != 0 else 1)))
+        return f"rgb(0, {intensity}, {intensity})"
+    else:
+        intensity = min(255, int(70 + 185 * (abs(val) / abs(df_min) if df_min != 0 else 1)))
+        return f"rgb({intensity}, 20, {intensity})"
+
 def get_pinning_sentiment(df, spot):
     if df.empty or spot is None:
         return "Neutral", "⚪", "gray"
@@ -125,14 +118,15 @@ for i, ticker in enumerate(watchlist):
             st.write("No data")
             continue
 
-        # Pinning + GEX Delta
         sentiment, emoji, color = get_pinning_sentiment(df, spot)
         st.markdown(f"**GEX Pinning:** <span style='color:{color}; font-size:1.2em'>{emoji} {sentiment}</span>", unsafe_allow_html=True)
 
+        # GEX Delta
         current_total = df["net_gex"].sum()
         prev_total = st.session_state.previous_gex.get(ticker, current_total)
         delta = current_total - prev_total
-        st.metric("**Total Net GEX**", f"${current_total/1_000_000:,.1f}M", delta=f"{delta/1_000_000:+.1f}M")
+        st.metric("**Total Net GEX**", f"${current_total/1_000_000:,.1f}M", 
+                  delta=f"{delta/1_000_000:+.1f}M")
         st.session_state.previous_gex[ticker] = current_total
 
         # Apply filters
@@ -150,25 +144,19 @@ for i, ticker in enumerate(watchlist):
 
         # GEX Distribution Chart
         if not filtered_df.empty:
+            max_gex = filtered_df["net_gex"].max()
+            min_gex = filtered_df["net_gex"].min()
             fig_dist = go.Figure()
             fig_dist.add_trace(go.Bar(
                 x=filtered_df["strike"],
                 y=filtered_df["net_gex"],
-                marker_color=[get_color(v) for v in filtered_df["net_gex"]],
+                marker_color=[get_color(v, max_gex, min_gex) for v in filtered_df["net_gex"]],
                 name="GEX"
             ))
-            fig_dist.update_layout(height=180, margin=dict(l=0,r=0,t=0,b=0), title="GEX Distribution", showlegend=False)
+            fig_dist.update_layout(height=160, margin=dict(l=0,r=0,t=0,b=0), title="GEX Distribution", showlegend=False)
             st.plotly_chart(fig_dist, use_container_width=True)
 
-        # Main GEX Table with Key Levels Highlight
-        def get_color(val):
-            if val > 0:
-                intensity = min(255, int(70 + 185 * (val / filtered_df["net_gex"].max() if filtered_df["net_gex"].max() != 0 else 1)))
-                return f"rgb(0, {intensity}, {intensity})"
-            else:
-                intensity = min(255, int(70 + 185 * (abs(val) / abs(filtered_df["net_gex"].min()) if filtered_df["net_gex"].min() != 0 else 1)))
-                return f"rgb({intensity}, 20, {intensity})"
-
+        # Main Table
         king_pos = filtered_df.loc[filtered_df["net_gex"].idxmax()] if not filtered_df.empty else None
         king_neg = filtered_df.loc[filtered_df["net_gex"].idxmin()] if not filtered_df.empty else None
 
@@ -178,7 +166,7 @@ for i, ticker in enumerate(watchlist):
                 values=[filtered_df["strike"].round(0), filtered_df["volume"].round(0), filtered_df["open_interest"].round(0), (filtered_df["net_gex"]/1000).round(1)],
                 align="center",
                 font=dict(size=13),
-                fill_color=[["#1a1a2e"] + [get_color(v) for v in filtered_df["net_gex"]]],
+                fill_color=[["#1a1a2e"] + [get_color(v, filtered_df["net_gex"].max(), filtered_df["net_gex"].min()) for v in filtered_df["net_gex"]]],
                 height=36,
                 line_color=[["#ffeb3b" if king_pos is not None and s == king_pos["strike"] else "#e040ff" if king_neg is not None and s == king_neg["strike"] else "#ffffff" for s in filtered_df["strike"]]],
                 line_width=3
@@ -198,4 +186,4 @@ for i, ticker in enumerate(watchlist):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Phase 3 Complete • Dynamic Bias • Distribution Charts • Save/Load Views • Key Levels")
+st.caption("✅ Phase 3 Complete • Dynamic Bias • GEX Charts • Save Views • Key Levels")
