@@ -6,7 +6,7 @@ from datetime import datetime
 
 st.set_page_config(layout="wide", page_title="GEX Heatmap", initial_sidebar_state="collapsed")
 
-st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ) - Full Chain")
+st.title(" Live GEX Heatmap Tool Full Chain")
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
 
