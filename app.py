@@ -28,9 +28,8 @@ st.title("🚀 Your GEX Heatmap Tool - Full Chain")
 st.sidebar.header("Watchlist")
 watchlist = st.sidebar.multiselect("Select Tickers", ["SPX", "SPY", "QQQ", "IWM", "NDX"], default=["SPX", "SPY", "QQQ"])
 
-# ====================== QUICK PRESETS & OPTIONS ======================
+# ====================== QUICK ACTIONS ======================
 st.sidebar.header("Quick Actions")
-compare_mode = st.sidebar.checkbox("Compare 0DTE vs 1DTE", value=False)
 mobile_layout = st.sidebar.checkbox("Mobile-first vertical layout", value=False)
 
 # ====================== REALTIME REFRESH ======================
@@ -99,51 +98,77 @@ def fetch_gex(ticker):
         return pd.DataFrame(), None, None
 
 # ====================== MAIN DASHBOARD ======================
-if mobile_layout:
-    for ticker in watchlist:
-        st.subheader(ticker)
+cols = st.columns(len(watchlist)) if not mobile_layout else [st.container() for _ in watchlist]
+
+for i, ticker in enumerate(watchlist):
+    container = cols[i] if not mobile_layout else cols[i]
+    with container:
         df, spot, gamma_flip = fetch_gex(ticker)
-        # (vertical mobile rendering - simplified for now)
-else:
-    cols = st.columns(len(watchlist))
-    for i, ticker in enumerate(watchlist):
-        with cols[i]:
-            df, spot, gamma_flip = fetch_gex(ticker)
-            
-            st.subheader(f"{ticker} — {datetime.now().strftime('%H:%M:%S')}")
-            
-            if df.empty or spot is None:
-                st.write("No data")
-                continue
+        
+        st.subheader(f"{ticker} — {datetime.now().strftime('%H:%M:%S')}")
+        
+        if df.empty or spot is None:
+            st.write("No data")
+            continue
 
-            sentiment, emoji, color = get_pinning_sentiment(df, spot)
-            st.markdown(f"**GEX Pinning:** <span style='color:{color}; font-size:1.2em'>{emoji} {sentiment}</span>", unsafe_allow_html=True)
+        sentiment, emoji, color = get_pinning_sentiment(df, spot)
+        st.markdown(f"**GEX Pinning:** <span style='color:{color}; font-size:1.2em'>{emoji} {sentiment}</span>", unsafe_allow_html=True)
 
-            # GEX Delta
-            current_total = df["net_gex"].sum()
-            prev_total = st.session_state.previous_gex.get(ticker, current_total)
-            delta = current_total - prev_total
-            st.metric("**Total Net GEX**", f"${current_total/1_000_000:,.1f}M", 
-                      delta=f"{delta/1_000_000:+.1f}M")
-            st.session_state.previous_gex[ticker] = current_total
+        # GEX Delta
+        current_total = df["net_gex"].sum()
+        prev_total = st.session_state.previous_gex.get(ticker, current_total)
+        delta = current_total - prev_total
+        st.metric("**Total Net GEX**", f"${current_total/1_000_000:,.1f}M", 
+                  delta=f"{delta/1_000_000:+.1f}M")
+        st.session_state.previous_gex[ticker] = current_total
 
-            # Apply filters
-            filtered_df = df.copy()
-            if not show_all and spot:
-                lower = spot * (1 - range_percent / 100)
-                upper = spot * (1 + range_percent / 100)
-                filtered_df = filtered_df[(filtered_df["strike"] >= lower) & (filtered_df["strike"] <= upper)]
-            filtered_df = filtered_df[abs(filtered_df["net_gex"]) / 1000 >= min_gex_k]
-            if pos_only:
-                filtered_df = filtered_df[filtered_df["net_gex"] > 0]
-            if neg_only:
-                filtered_df = filtered_df[filtered_df["net_gex"] < 0]
-            filtered_df = filtered_df[(filtered_df["volume"] >= min_vol) & (filtered_df["open_interest"] >= min_oi)]
+        # Apply filters
+        filtered_df = df.copy()
+        if not show_all and spot:
+            lower = spot * (1 - range_percent / 100)
+            upper = spot * (1 + range_percent / 100)
+            filtered_df = filtered_df[(filtered_df["strike"] >= lower) & (filtered_df["strike"] <= upper)]
+        filtered_df = filtered_df[abs(filtered_df["net_gex"]) / 1000 >= min_gex_k]
+        if pos_only:
+            filtered_df = filtered_df[filtered_df["net_gex"] > 0]
+        if neg_only:
+            filtered_df = filtered_df[filtered_df["net_gex"] < 0]
+        filtered_df = filtered_df[(filtered_df["volume"] >= min_vol) & (filtered_df["open_interest"] >= min_oi)]
 
-            def get_color(val):
-                if val > 0:
-                    intensity = min(255, int(70 + 185 * (val / filtered_df["net_gex"].max() if filtered_df["net_gex"].max() != 0 else 1)))
-                    return f"rgb(0, {intensity}, {intensity})"
-                else:
-                    intensity = min(255, int(70 + 185 * (abs(val) / abs(filtered_df["net_gex"].min()) if filtered_df["net_gex"].min() != 0 else 1)))
-                    return f"rgb({intensity
+        def get_color(val):
+            if val > 0:
+                intensity = min(255, int(70 + 185 * (val / filtered_df["net_gex"].max() if filtered_df["net_gex"].max() != 0 else 1)))
+                return f"rgb(0, {intensity}, {intensity})"
+            else:
+                intensity = min(255, int(70 + 185 * (abs(val) / abs(filtered_df["net_gex"].min()) if filtered_df["net_gex"].min() != 0 else 1)))
+                return f"rgb({intensity}, 20, {intensity})"
+
+        king_pos = filtered_df.loc[filtered_df["net_gex"].idxmax()] if not filtered_df.empty else None
+        king_neg = filtered_df.loc[filtered_df["net_gex"].idxmin()] if not filtered_df.empty else None
+
+        fig = go.Figure(data=[go.Table(
+            header=dict(values=["Strike", "Vol", "OI", "GEX ($k)"], align="center", font=dict(size=14, color="white"), height=40),
+            cells=dict(
+                values=[filtered_df["strike"].round(0), filtered_df["volume"].round(0), filtered_df["open_interest"].round(0), (filtered_df["net_gex"]/1000).round(1)],
+                align="center",
+                font=dict(size=13),
+                fill_color=[["#1a1a2e"] + [get_color(v) for v in filtered_df["net_gex"]]],
+                height=36,
+                line_color=[["#ffeb3b" if king_pos is not None and s == king_pos["strike"] else "#e040ff" if king_neg is not None and s == king_neg["strike"] else "#ffffff" for s in filtered_df["strike"]]],
+                line_width=3
+            )
+        )])
+        
+        fig.update_layout(height=780, margin=dict(l=0,r=0,t=10,b=0))
+        st.plotly_chart(fig, use_container_width=True)
+
+        if st.button(f"📥 Export {ticker} CSV", key=f"export_{i}"):
+            csv = filtered_df.to_csv(index=False)
+            st.download_button("Download CSV", csv, f"{ticker}_gex.csv", "text/csv", key=f"dl_{i}")
+
+        if king_pos is not None:
+            st.success(f"**King +** {king_pos['strike']} (+${king_pos['net_gex']/1_000_000:,.1f}M)")
+        if king_neg is not None:
+            st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
+
+st.caption("✅ Phase 2 Complete • Fixed & Ready")
