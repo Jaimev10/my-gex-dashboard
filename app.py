@@ -6,6 +6,22 @@ from datetime import datetime
 
 st.set_page_config(layout="wide", page_title="GEX Heatmap", initial_sidebar_state="collapsed")
 
+# ====================== MOBILE-FRIENDLY CSS ======================
+st.markdown("""
+<style>
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+        .stTable { overflow-x: auto !important; }
+        .st-emotion-cache-1dj0h7a { font-size: 0.95rem !important; }
+        .stPlotlyChart { height: 680px !important; }
+        .stMetric { font-size: 1.1rem !important; }
+        .stButton button { height: 48px !important; font-size: 1.1rem !important; }
+    }
+    /* Desktop stays exactly the same */
+    .stTable { overflow-x: auto; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ) - Full Chain")
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
@@ -31,7 +47,7 @@ range_percent = st.sidebar.slider("Show strikes within ± % of spot",
                                  min_value=5, max_value=30, value=12, step=1)
 show_all = st.sidebar.checkbox("Show ALL strikes", value=False)
 
-@st.cache_data(ttl=20)  # faster refresh
+@st.cache_data(ttl=20)
 def fetch_gex(ticker):
     fa = flashalpha.FlashAlpha(api_key=YOUR_FLASHALPHA_KEY)
     try:
@@ -54,23 +70,18 @@ def fetch_gex(ticker):
 def get_pinning_sentiment(df, spot):
     if df.empty or spot is None:
         return "Neutral", "⚪", "gray"
-    
     king_pos = df.loc[df["net_gex"].idxmax()] if not df.empty else None
-    king_neg = df.loc[df["net_gex"].idxmin()] if not df.empty else None
     total_gex = df["net_gex"].sum()
-    
     if king_pos is None:
         return "Neutral", "⚪", "gray"
-    
     dist_to_pos = abs(king_pos["strike"] - spot)
-    
-    if total_gex > 0 and dist_to_pos < 30:           # strong positive gamma close by
+    if total_gex > 0 and dist_to_pos < 30:
         return "Bullish Pin", "🟢", "green"
-    elif total_gex < 0 and dist_to_pos < 30:         # negative gamma dominant
+    elif total_gex < 0 and dist_to_pos < 30:
         return "Bearish Pin", "🔴", "red"
-    elif king_pos["strike"] < spot - 10:             # positive gamma below price = support
+    elif king_pos["strike"] < spot - 10:
         return "Bullish Bias", "🟢", "green"
-    elif king_pos["strike"] > spot + 10:             # positive gamma above price = resistance
+    elif king_pos["strike"] > spot + 10:
         return "Bearish Bias", "🔴", "red"
     else:
         return "Neutral / Choppy", "⚪", "gray"
@@ -88,12 +99,10 @@ for i, ticker in enumerate(tickers):
             st.write("No data")
             continue
 
-        # Pinning signal
         sentiment, emoji, color = get_pinning_sentiment(df, spot)
         st.markdown(f"**GEX Pinning:** <span style='color:{color}; font-size:1.2em'>{emoji} {sentiment}</span>", unsafe_allow_html=True)
 
-        # Apply filter
-        if not show_all:
+        if not show_all and spot is not None:
             lower = spot * (1 - range_percent / 100)
             upper = spot * (1 + range_percent / 100)
             df = df[(df["strike"] >= lower) & (df["strike"] <= upper)].copy()
@@ -102,7 +111,6 @@ for i, ticker in enumerate(tickers):
         st.metric("**Total Net GEX**", f"${total_gex/1_000_000:,.1f}M", 
                   delta=f"Flip: ${gamma_flip:,.0f}" if gamma_flip else None)
 
-        # Colors & Table
         def get_color(val):
             if val > 0:
                 intensity = min(255, int(70 + 185 * (val / df["net_gex"].max() if df["net_gex"].max() != 0 else 1)))
@@ -121,7 +129,7 @@ for i, ticker in enumerate(tickers):
                 align="center",
                 font=dict(size=13),
                 fill_color=[["#1a1a2e"] + [get_color(v) for v in df["net_gex"]]],
-                height=34,
+                height=36,
                 line_color=[["#ffeb3b" if king_pos is not None and s == king_pos["strike"] else "#e040ff" if king_neg is not None and s == king_neg["strike"] else "#ffffff" for s in df["strike"]]],
                 line_width=3
             )
@@ -135,4 +143,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Real-time pinning analysis • Refresh button forces live update")
+st.caption("✅ Full-chain GEX • Mobile optimized • Refresh anytime")
