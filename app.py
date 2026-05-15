@@ -12,8 +12,8 @@ YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
 # Quick expiration buttons
 st.sidebar.header("Quick Expirations")
 col1, col2, col3, col4 = st.sidebar.columns(4)
-
 today = date.today()
+
 if col1.button("0DTE", use_container_width=True):
     selected_date = today
 elif col2.button("1DTE", use_container_width=True):
@@ -30,7 +30,7 @@ else:
 expiration_str = selected_date.strftime("%Y-%m-%d")
 st.sidebar.caption(f"**Using:** {expiration_str}")
 
-# NEW: Strike range filter (this is what you asked for)
+# Strike range filter (what you asked for)
 st.sidebar.header("Strike Filter")
 range_percent = st.sidebar.slider("Show strikes within ± % of spot", 
                                  min_value=5, max_value=30, value=12, step=1)
@@ -66,7 +66,7 @@ for i, ticker in enumerate(tickers):
             st.write("No data for this expiration")
             continue
 
-        # === APPLY STRIKE FILTER ===
+        # Apply strike filter
         if not show_all and spot is not None:
             lower = spot * (1 - range_percent / 100)
             upper = spot * (1 + range_percent / 100)
@@ -76,14 +76,14 @@ for i, ticker in enumerate(tickers):
         st.metric("**Total Net GEX**", f"${total_gex/1_000_000:,.1f}M", 
                   delta=f"Flip: ${gamma_flip:,.0f}" if gamma_flip else None)
 
-        # Colors that match your original screenshot
+        # Colors tuned to look very close to your screenshot
         def get_color(val):
             if val > 0:
-                intensity = min(255, int(60 + 195 * (val / df["net_gex"].max() if df["net_gex"].max() != 0 else 1)))
+                intensity = min(255, int(70 + 185 * (val / df["net_gex"].max() if df["net_gex"].max() != 0 else 1)))
                 return f"rgb(0, {intensity}, {intensity})"
             else:
-                intensity = min(255, int(60 + 195 * (abs(val) / abs(df["net_gex"].min()) if df["net_gex"].min() != 0 else 1)))
-                return f"rgb({intensity}, 30, {intensity})"
+                intensity = min(255, int(70 + 185 * (abs(val) / abs(df["net_gex"].min()) if df["net_gex"].min() != 0 else 1)))
+                return f"rgb({intensity}, 20, {intensity})"
 
         king_pos = df.loc[df["net_gex"].idxmax()] if not df.empty else None
         king_neg = df.loc[df["net_gex"].idxmin()] if not df.empty else None
@@ -122,4 +122,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("💡 Adjusted the range in the sidebar • Your permanent website updates automatically!")
+st.caption("💡 Use sidebar to change expiration or strike range • Auto-updates every 30 seconds")
