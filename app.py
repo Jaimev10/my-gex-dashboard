@@ -9,7 +9,7 @@ st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ) - Full Chain")
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
 
-# Strike range filter (keeps it clean like you wanted)
+# Strike range filter
 st.sidebar.header("Strike Filter")
 range_percent = st.sidebar.slider("Show strikes within ± % of spot", 
                                  min_value=5, max_value=30, value=12, step=1)
@@ -19,7 +19,7 @@ show_all = st.sidebar.checkbox("Show ALL strikes", value=False)
 def fetch_gex(ticker):
     fa = flashalpha.FlashAlpha(api_key=YOUR_FLASHALPHA_KEY)
     try:
-        data = fa.gex(ticker)                    # ← Full chain (no expiration needed now)
+        data = fa.gex(ticker)                    # Full chain (Enhanced plan)
         spot = data.get("underlying_price")
         gamma_flip = data.get("gamma_flip")
         strikes = data.get("strikes", [])
@@ -27,6 +27,11 @@ def fetch_gex(ticker):
         if not df.empty:
             df = df.sort_values("strike")
             df["net_gex"] = df["net_gex"].fillna(0)
+            
+            # FIXED: Correct column names from Flash Alpha
+            df["volume"] = df.get("call_volume", 0) + df.get("put_volume", 0)
+            df["open_interest"] = df.get("call_oi", 0) + df.get("put_oi", 0)
+            
         return df, spot, gamma_flip
     except Exception as e:
         st.error(f"Oops! {ticker} said: {e}")
@@ -55,7 +60,7 @@ for i, ticker in enumerate(tickers):
         st.metric("**Total Net GEX**", f"${total_gex/1_000_000:,.1f}M", 
                   delta=f"Flip: ${gamma_flip:,.0f}" if gamma_flip else None)
 
-        # Colors tuned to look close to your screenshot
+        # Colors
         def get_color(val):
             if val > 0:
                 intensity = min(255, int(70 + 185 * (val / df["net_gex"].max() if df["net_gex"].max() != 0 else 1)))
@@ -77,8 +82,8 @@ for i, ticker in enumerate(tickers):
             cells=dict(
                 values=[
                     df["strike"].round(0),
-                    df.get("volume", ["-"] * len(df)),
-                    df.get("open_interest", ["-"] * len(df)),
+                    df["volume"].round(0),
+                    df["open_interest"].round(0),
                     (df["net_gex"]/1000).round(1)
                 ],
                 align="center",
@@ -101,4 +106,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Full-chain GEX (Enhanced plan) • Sidebar controls • Auto-updates every 30s")
+st.caption("✅ Full-chain GEX + Fixed Vol/OI columns")
