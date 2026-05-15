@@ -4,10 +4,25 @@ import flashalpha
 import plotly.graph_objects as go
 from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="GEX Heatmap")
+st.set_page_config(layout="wide", page_title="GEX Heatmap", initial_sidebar_state="collapsed")
+
 st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ) - Full Chain")
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
+
+# Live timer & refresh
+if "last_update" not in st.session_state:
+    st.session_state.last_update = datetime.now()
+
+col_refresh, col_time = st.columns([1, 3])
+with col_refresh:
+    if st.button("🔄 Refresh Now", type="primary", use_container_width=True):
+        st.session_state.last_update = datetime.now()
+        st.rerun()
+
+with col_time:
+    seconds_ago = int((datetime.now() - st.session_state.last_update).total_seconds())
+    st.caption(f"Last updated: **{seconds_ago} seconds ago**")
 
 # Strike range filter
 st.sidebar.header("Strike Filter")
@@ -19,7 +34,7 @@ show_all = st.sidebar.checkbox("Show ALL strikes", value=False)
 def fetch_gex(ticker):
     fa = flashalpha.FlashAlpha(api_key=YOUR_FLASHALPHA_KEY)
     try:
-        data = fa.gex(ticker)                    # Full chain (Enhanced plan)
+        data = fa.gex(ticker)
         spot = data.get("underlying_price")
         gamma_flip = data.get("gamma_flip")
         strikes = data.get("strikes", [])
@@ -27,11 +42,8 @@ def fetch_gex(ticker):
         if not df.empty:
             df = df.sort_values("strike")
             df["net_gex"] = df["net_gex"].fillna(0)
-            
-            # FIXED: Correct column names from Flash Alpha
             df["volume"] = df.get("call_volume", 0) + df.get("put_volume", 0)
             df["open_interest"] = df.get("call_oi", 0) + df.get("put_oi", 0)
-            
         return df, spot, gamma_flip
     except Exception as e:
         st.error(f"Oops! {ticker} said: {e}")
@@ -50,7 +62,6 @@ for i, ticker in enumerate(tickers):
             st.write("No data")
             continue
 
-        # Apply strike filter
         if not show_all and spot is not None:
             lower = spot * (1 - range_percent / 100)
             upper = spot * (1 + range_percent / 100)
@@ -89,12 +100,13 @@ for i, ticker in enumerate(tickers):
                 align="center",
                 font=dict(size=13),
                 fill_color=[["#1a1a2e"] + [get_color(v) for v in df["net_gex"]]],
-                height=32,
+                height=34,
                 line_color=[[
-                    "#ffd700" if king_pos is not None and s == king_pos["strike"] else
-                    "#c724c7" if king_neg is not None and s == king_neg["strike"] else
+                    "#ffeb3b" if king_pos is not None and s == king_pos["strike"] else   # brighter gold
+                    "#e040ff" if king_neg is not None and s == king_neg["strike"] else   # brighter purple
                     "#ffffff" for s in df["strike"]
-                ]]
+                ]],
+                line_width=3   # thicker borders for glowing effect
             )
         )])
         
@@ -106,4 +118,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Full-chain GEX + Fixed Vol/OI columns")
+st.caption("✅ Full-chain GEX • Click Refresh Now anytime • Sidebar collapsed by default")
