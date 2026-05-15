@@ -25,11 +25,19 @@ with col_time:
     seconds_ago = int((datetime.now() - st.session_state.last_update).total_seconds())
     st.caption(f"**Live • Last updated {seconds_ago} seconds ago**")
 
-# ====================== STRIKE FILTER ======================
-st.sidebar.header("Strike Filter")
-range_percent = st.sidebar.slider("Show strikes within ± % of spot", 
-                                 min_value=5, max_value=30, value=12, step=1)
+# ====================== FILTERS (New!) ======================
+st.sidebar.header("Filters")
+
+range_percent = st.sidebar.slider("Strike range ± % of spot", 5, 30, 12)
 show_all = st.sidebar.checkbox("Show ALL strikes", value=False)
+
+min_gex_k = st.sidebar.slider("Minimum |GEX| ($k)", 0, 500, 50, step=25)
+
+pos_only = st.sidebar.checkbox("Positive GEX only")
+neg_only = st.sidebar.checkbox("Negative GEX only")
+
+min_vol = st.sidebar.slider("Minimum Volume", 0, 10000, 100, step=100)
+min_oi = st.sidebar.slider("Minimum Open Interest", 0, 50000, 500, step=500)
 
 @st.cache_data(ttl=20)
 def fetch_gex(ticker):
@@ -83,39 +91,51 @@ for i, ticker in enumerate(tickers):
             st.write("No data")
             continue
 
-        # Pinning signal
         sentiment, emoji, color = get_pinning_sentiment(df, spot)
         st.markdown(f"**GEX Pinning:** <span style='color:{color}; font-size:1.2em'>{emoji} {sentiment}</span>", unsafe_allow_html=True)
+
+        # ====================== APPLY ALL FILTERS ======================
+        filtered_df = df.copy()
 
         if not show_all and spot is not None:
             lower = spot * (1 - range_percent / 100)
             upper = spot * (1 + range_percent / 100)
-            df = df[(df["strike"] >= lower) & (df["strike"] <= upper)].copy()
+            filtered_df = filtered_df[(filtered_df["strike"] >= lower) & (filtered_df["strike"] <= upper)]
 
-        total_gex = df["net_gex"].sum()
+        filtered_df = filtered_df[abs(filtered_df["net_gex"]) / 1000 >= min_gex_k]
+
+        if pos_only:
+            filtered_df = filtered_df[filtered_df["net_gex"] > 0]
+        if neg_only:
+            filtered_df = filtered_df[filtered_df["net_gex"] < 0]
+
+        filtered_df = filtered_df[filtered_df["volume"] >= min_vol]
+        filtered_df = filtered_df[filtered_df["open_interest"] >= min_oi]
+
+        total_gex = filtered_df["net_gex"].sum()
         st.metric("**Total Net GEX**", f"${total_gex/1_000_000:,.1f}M", 
                   delta=f"Flip: ${gamma_flip:,.0f}" if gamma_flip else None)
 
         def get_color(val):
             if val > 0:
-                intensity = min(255, int(70 + 185 * (val / df["net_gex"].max() if df["net_gex"].max() != 0 else 1)))
+                intensity = min(255, int(70 + 185 * (val / filtered_df["net_gex"].max() if filtered_df["net_gex"].max() != 0 else 1)))
                 return f"rgb(0, {intensity}, {intensity})"
             else:
-                intensity = min(255, int(70 + 185 * (abs(val) / abs(df["net_gex"].min()) if df["net_gex"].min() != 0 else 1)))
+                intensity = min(255, int(70 + 185 * (abs(val) / abs(filtered_df["net_gex"].min()) if filtered_df["net_gex"].min() != 0 else 1)))
                 return f"rgb({intensity}, 20, {intensity})"
 
-        king_pos = df.loc[df["net_gex"].idxmax()] if not df.empty else None
-        king_neg = df.loc[df["net_gex"].idxmin()] if not df.empty else None
+        king_pos = filtered_df.loc[filtered_df["net_gex"].idxmax()] if not filtered_df.empty else None
+        king_neg = filtered_df.loc[filtered_df["net_gex"].idxmin()] if not filtered_df.empty else None
 
         fig = go.Figure(data=[go.Table(
             header=dict(values=["Strike", "Vol", "OI", "GEX ($k)"], align="center", font=dict(size=14, color="white"), height=40),
             cells=dict(
-                values=[df["strike"].round(0), df["volume"].round(0), df["open_interest"].round(0), (df["net_gex"]/1000).round(1)],
+                values=[filtered_df["strike"].round(0), filtered_df["volume"].round(0), filtered_df["open_interest"].round(0), (filtered_df["net_gex"]/1000).round(1)],
                 align="center",
                 font=dict(size=13),
-                fill_color=[["#1a1a2e"] + [get_color(v) for v in df["net_gex"]]],
+                fill_color=[["#1a1a2e"] + [get_color(v) for v in filtered_df["net_gex"]]],
                 height=36,
-                line_color=[["#ffeb3b" if king_pos is not None and s == king_pos["strike"] else "#e040ff" if king_neg is not None and s == king_neg["strike"] else "#ffffff" for s in df["strike"]]],
+                line_color=[["#ffeb3b" if king_pos is not None and s == king_pos["strike"] else "#e040ff" if king_neg is not None and s == king_neg["strike"] else "#ffffff" for s in filtered_df["strike"]]],
                 line_width=3
             )
         )])
@@ -128,4 +148,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("✅ Full-chain GEX • Pinning analysis • Refresh anytime")
+st.caption("✅ Full-chain GEX with new filters • Mobile friendly")
