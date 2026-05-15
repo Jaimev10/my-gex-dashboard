@@ -192,7 +192,7 @@ with tab2:
 
             st.plotly_chart(fig, use_container_width=True)
 
-            st.info("📍 This chart is designed to look very close to Alphatica’s GEX Profile. The top metrics and spot line are live.")
+            st.info("The top metrics and spot line are live.")
 
     except Exception as e:
         st.error(f"Could not load GEX Profile: {e}")
