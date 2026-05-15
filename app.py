@@ -2,45 +2,24 @@ import streamlit as st
 import pandas as pd
 import flashalpha
 import plotly.graph_objects as go
-from datetime import datetime, date, timedelta
+from datetime import datetime
 
 st.set_page_config(layout="wide", page_title="GEX Heatmap")
-st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ)")
+st.title("🚀 Your GEX Heatmap Tool (SPX / SPY / QQQ) - Full Chain")
 
 YOUR_FLASHALPHA_KEY = st.secrets["FLASHALPHA_KEY"]
 
-# Quick expiration buttons
-st.sidebar.header("Quick Expirations")
-col1, col2, col3, col4 = st.sidebar.columns(4)
-today = date.today()
-
-if col1.button("0DTE", use_container_width=True):
-    selected_date = today
-elif col2.button("1DTE", use_container_width=True):
-    selected_date = today + timedelta(days=1)
-elif col3.button("2DTE", use_container_width=True):
-    selected_date = today + timedelta(days=2)
-elif col4.button("Weekly", use_container_width=True):
-    days_ahead = (4 - today.weekday()) % 7
-    if days_ahead == 0: days_ahead = 7
-    selected_date = today + timedelta(days=days_ahead)
-else:
-    selected_date = st.sidebar.date_input("Or pick any date", value=today)
-
-expiration_str = selected_date.strftime("%Y-%m-%d")
-st.sidebar.caption(f"**Using:** {expiration_str}")
-
-# Strike range filter (what you asked for)
+# Strike range filter (keeps it clean like you wanted)
 st.sidebar.header("Strike Filter")
 range_percent = st.sidebar.slider("Show strikes within ± % of spot", 
                                  min_value=5, max_value=30, value=12, step=1)
 show_all = st.sidebar.checkbox("Show ALL strikes", value=False)
 
 @st.cache_data(ttl=30)
-def fetch_gex(ticker, expiration):
+def fetch_gex(ticker):
     fa = flashalpha.FlashAlpha(api_key=YOUR_FLASHALPHA_KEY)
     try:
-        data = fa.gex(ticker, expiration=expiration)
+        data = fa.gex(ticker)                    # ← Full chain (no expiration needed now)
         spot = data.get("underlying_price")
         gamma_flip = data.get("gamma_flip")
         strikes = data.get("strikes", [])
@@ -58,12 +37,12 @@ tickers = ["SPX", "SPY", "QQQ"]
 
 for i, ticker in enumerate(tickers):
     with cols[i]:
-        df, spot, gamma_flip = fetch_gex(ticker, expiration_str)
+        df, spot, gamma_flip = fetch_gex(ticker)
         
-        st.subheader(f"{ticker} — {datetime.now().strftime('%H:%M:%S')} — {expiration_str}")
+        st.subheader(f"{ticker} — {datetime.now().strftime('%H:%M:%S')}")
         
         if df.empty:
-            st.write("No data for this expiration")
+            st.write("No data")
             continue
 
         # Apply strike filter
@@ -76,7 +55,7 @@ for i, ticker in enumerate(tickers):
         st.metric("**Total Net GEX**", f"${total_gex/1_000_000:,.1f}M", 
                   delta=f"Flip: ${gamma_flip:,.0f}" if gamma_flip else None)
 
-        # Colors tuned to look very close to your screenshot
+        # Colors tuned to look close to your screenshot
         def get_color(val):
             if val > 0:
                 intensity = min(255, int(70 + 185 * (val / df["net_gex"].max() if df["net_gex"].max() != 0 else 1)))
@@ -122,4 +101,4 @@ for i, ticker in enumerate(tickers):
         if king_neg is not None:
             st.error(f"**King -** {king_neg['strike']} (-${abs(king_neg['net_gex'])/1_000_000:,.1f}M)")
 
-st.caption("💡 Use sidebar to change expiration or strike range • Auto-updates every 30 seconds")
+st.caption("✅ Full-chain GEX (Enhanced plan) • Sidebar controls • Auto-updates every 30s")
