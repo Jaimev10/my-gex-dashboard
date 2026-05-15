@@ -22,7 +22,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-st.title("Realtime GEX Heatmap Tool - Full Chain")
+st.title("🚀 Your GEX Heatmap Tool - Full Chain")
 
 # ====================== WATCHLIST ======================
 st.sidebar.header("Watchlist")
